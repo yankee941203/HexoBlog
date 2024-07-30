@@ -1,0 +1,543 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=2">
+<meta name="theme-color" content="#222">
+<meta name="generator" content="Hexo 7.3.0">
+  <link rel="apple-touch-icon" sizes="180x180" href="/HexoBlog/images/apple-touch-icon-next.png">
+  <link rel="icon" type="image/png" sizes="32x32" href="/HexoBlog/images/favicon-32x32-next.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="/HexoBlog/images/favicon-16x16-next.png">
+  <link rel="mask-icon" href="/HexoBlog/images/logo.svg" color="#222">
+
+<link rel="stylesheet" href="/HexoBlog/css/main.css">
+
+
+<link rel="stylesheet" href="/HexoBlog/lib/font-awesome/css/all.min.css">
+
+<script id="hexo-configurations">
+    var NexT = window.NexT || {};
+    var CONFIG = {"hostname":"yankee941203.github.io","root":"/HexoBlog/","scheme":"Pisces","version":"7.8.0","exturl":false,"sidebar":{"position":"left","display":"post","padding":18,"offset":12,"onmobile":false},"copycode":{"enable":false,"show_result":false,"style":null},"back2top":{"enable":true,"sidebar":true,"scrollpercent":true},"bookmark":{"enable":false,"color":"#222","save":"auto"},"fancybox":false,"mediumzoom":false,"lazyload":false,"pangu":false,"comments":{"style":"tabs","active":"valine","storage":true,"lazyload":false,"nav":null,"activeClass":"valine"},"algolia":{"hits":{"per_page":10},"labels":{"input_placeholder":"Search for Posts","hits_empty":"We didn't find any results for the search: ${query}","hits_stats":"${hits} results found in ${time} ms"}},"localsearch":{"enable":false,"trigger":"auto","top_n_per_article":1,"unescape":false,"preload":false},"motion":{"enable":true,"async":false,"transition":{"post_block":"fadeIn","post_header":"slideDownIn","post_body":"slideDownIn","coll_header":"slideLeftIn","sidebar":"slideUpIn"}}};
+  </script>
+
+  <meta name="description" content="背景在最近为公司项目写AT case时，有一个需求是将一个CA证书传入K8s的config map中，供内部Pod拉取镜像文件使用。我们使用的测试框架是基于Python实现的，在Jenkins Pipeline上运行时会拉起一个测试容器，运行所有的test case，而在case本地测试时，则会在本地的Linux环境上直接拉起运行。 问题遇到的具体问题是，在本地测试时，通过Python的kuber">
+<meta property="og:type" content="article">
+<meta property="og:title" content="浅析Python3获取环境变量时的字符串转义问题">
+<meta property="og:url" content="https://yankee941203.github.io/HexoBlog/PythonGetEnvStringEscapingIssue/index.html">
+<meta property="og:site_name" content="岩洞小水坑">
+<meta property="og:description" content="背景在最近为公司项目写AT case时，有一个需求是将一个CA证书传入K8s的config map中，供内部Pod拉取镜像文件使用。我们使用的测试框架是基于Python实现的，在Jenkins Pipeline上运行时会拉起一个测试容器，运行所有的test case，而在case本地测试时，则会在本地的Linux环境上直接拉起运行。 问题遇到的具体问题是，在本地测试时，通过Python的kuber">
+<meta property="og:locale" content="en_US">
+<meta property="og:image" content="https://yankee941203.github.io/HexoBlog/img/BRZ.jpg">
+<meta property="article:published_time" content="2024-07-30T07:16:33.000Z">
+<meta property="article:modified_time" content="2024-07-30T15:25:54.940Z">
+<meta property="article:author" content="Yan Sun">
+<meta property="article:tag" content="Python">
+<meta property="article:tag" content="环境变量">
+<meta property="article:tag" content="Debug">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:image" content="https://yankee941203.github.io/HexoBlog/img/BRZ.jpg">
+
+<link rel="canonical" href="https://yankee941203.github.io/HexoBlog/PythonGetEnvStringEscapingIssue/">
+
+
+<script id="page-configurations">
+  // https://hexo.io/docs/variables.html
+  CONFIG.page = {
+    sidebar: "",
+    isHome : false,
+    isPost : true,
+    lang   : 'en'
+  };
+</script>
+
+  <title>浅析Python3获取环境变量时的字符串转义问题 | 岩洞小水坑</title>
+  
+
+<!-- Google tag (gtag.js) -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-H3SL90QYZT"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+
+  gtag('config', 'G-H3SL90QYZT');
+</script>
+
+
+  <script>
+    var _hmt = _hmt || [];
+    (function() {
+      var hm = document.createElement("script");
+      hm.src = "https://hm.baidu.com/hm.js?6c96f3e6ab52758bb356f9dc3e6e59c4";
+      var s = document.getElementsByTagName("script")[0];
+      s.parentNode.insertBefore(hm, s);
+    })();
+  </script>
+
+
+
+
+  <noscript>
+  <style>
+  .use-motion .brand,
+  .use-motion .menu-item,
+  .sidebar-inner,
+  .use-motion .post-block,
+  .use-motion .pagination,
+  .use-motion .comments,
+  .use-motion .post-header,
+  .use-motion .post-body,
+  .use-motion .collection-header { opacity: initial; }
+
+  .use-motion .site-title,
+  .use-motion .site-subtitle {
+    opacity: initial;
+    top: initial;
+  }
+
+  .use-motion .logo-line-before i { left: initial; }
+  .use-motion .logo-line-after i { right: initial; }
+  </style>
+</noscript>
+
+</head>
+
+<body itemscope itemtype="http://schema.org/WebPage">
+  <div class="container use-motion">
+    <div class="headband"></div>
+
+    <header class="header" itemscope itemtype="http://schema.org/WPHeader">
+      <div class="header-inner"><div class="site-brand-container">
+  <div class="site-nav-toggle">
+    <div class="toggle" aria-label="Toggle navigation bar">
+      <span class="toggle-line toggle-line-first"></span>
+      <span class="toggle-line toggle-line-middle"></span>
+      <span class="toggle-line toggle-line-last"></span>
+    </div>
+  </div>
+
+  <div class="site-meta">
+
+    <a href="/HexoBlog/" class="brand" rel="start">
+      <span class="logo-line-before"><i></i></span>
+      <h1 class="site-title">岩洞小水坑</h1>
+      <span class="logo-line-after"><i></i></span>
+    </a>
+      <p class="site-subtitle" itemprop="description">总得有地方摸鱼不是</p>
+  </div>
+
+  <div class="site-nav-right">
+    <div class="toggle popup-trigger">
+    </div>
+  </div>
+</div>
+
+
+
+
+<nav class="site-nav">
+  <ul id="menu" class="main-menu menu">
+        <li class="menu-item menu-item-home">
+
+    <a href="/HexoBlog/" rel="section"><i class="fa fa-home fa-fw"></i>Home</a>
+
+  </li>
+        <li class="menu-item menu-item-about">
+
+    <a href="/HexoBlog/about/" rel="section"><i class="fa fa-user fa-fw"></i>About</a>
+
+  </li>
+        <li class="menu-item menu-item-tags">
+
+    <a href="/HexoBlog/tags/" rel="section"><i class="fa fa-tags fa-fw"></i>Tags</a>
+
+  </li>
+        <li class="menu-item menu-item-categories">
+
+    <a href="/HexoBlog/categories/" rel="section"><i class="fa fa-th fa-fw"></i>Categories</a>
+
+  </li>
+        <li class="menu-item menu-item-archives">
+
+    <a href="/HexoBlog/archives/" rel="section"><i class="fa fa-archive fa-fw"></i>Archives</a>
+
+  </li>
+        <li class="menu-item menu-item-schedule">
+
+    <a href="/HexoBlog/schedule/" rel="section"><i class="fa fa-calendar fa-fw"></i>Schedule</a>
+
+  </li>
+  </ul>
+</nav>
+
+
+
+
+</div>
+    </header>
+
+    
+  <div class="reading-progress-bar"></div>
+
+
+    <main class="main">
+      <div class="main-inner">
+        <div class="content-wrap">
+          
+
+          <div class="content post posts-expand">
+            
+
+    
+  
+  
+  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="en">
+    <link itemprop="mainEntityOfPage" href="https://yankee941203.github.io/HexoBlog/PythonGetEnvStringEscapingIssue/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="http://p1.itc.cn/images01/20200611/b355f238a324427d956161b3a0d02d44.jpeg">
+      <meta itemprop="name" content="Yan Sun">
+      <meta itemprop="description" content="">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="岩洞小水坑">
+    </span>
+      <header class="post-header">
+        <h1 class="post-title" itemprop="name headline">
+          浅析Python3获取环境变量时的字符串转义问题
+        </h1>
+
+        <div class="post-meta">
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-calendar"></i>
+              </span>
+              <span class="post-meta-item-text">Posted on</span>
+              
+
+              <time title="Created: 2024-07-30 15:16:33 / Modified: 23:25:54" itemprop="dateCreated datePublished" datetime="2024-07-30T15:16:33+08:00">2024-07-30</time>
+            </span>
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-folder"></i>
+              </span>
+              <span class="post-meta-item-text">In</span>
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/HexoBlog/categories/%E5%BC%80%E5%8F%91%E6%97%A5%E5%B8%B8/" itemprop="url" rel="index"><span itemprop="name">开发日常</span></a>
+                </span>
+            </span>
+
+          
+            <span class="post-meta-item" title="Views" id="busuanzi_container_page_pv" style="display: none;">
+              <span class="post-meta-item-icon">
+                <i class="fa fa-eye"></i>
+              </span>
+              <span class="post-meta-item-text">Views: </span>
+              <span id="busuanzi_value_page_pv"></span>
+            </span>
+  
+  <span class="post-meta-item">
+    
+      <span class="post-meta-item-icon">
+        <i class="far fa-comment"></i>
+      </span>
+      <span class="post-meta-item-text">Valine: </span>
+    
+    <a title="valine" href="/HexoBlog/PythonGetEnvStringEscapingIssue/#valine-comments" itemprop="discussionUrl">
+      <span class="post-comments-count valine-comment-count" data-xid="/HexoBlog/PythonGetEnvStringEscapingIssue/" itemprop="commentCount"></span>
+    </a>
+  </span>
+  
+  
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+        <h2 id="背景"><a href="#背景" class="headerlink" title="背景"></a>背景</h2><p>在最近为公司项目写AT case时，有一个需求是将一个CA证书传入K8s的config map中，供内部Pod拉取镜像文件使用。我们使用的测试框架是基于Python实现的，在Jenkins Pipeline上运行时会拉起一个测试容器，运行所有的test case，而在case本地测试时，则会在本地的Linux环境上直接拉起运行。</p>
+<h2 id="问题"><a href="#问题" class="headerlink" title="问题"></a>问题</h2><p>遇到的具体问题是，在本地测试时，通过Python的kubernetes库，可以正常将如下所示的CA证书传入config map中：</p>
+<span id="more"></span>
+
+<p>CA Example:</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line">----BEGIN CERTIFICATE-----</span><br><span class="line">YOUR_CERTIFICATE_HERE</span><br><span class="line">...</span><br><span class="line">YOUR_CERTIFICATE_HERE</span><br><span class="line">-----END CERTIFICATE-----</span><br></pre></td></tr></table></figure>
+
+<p>Python Code Example:</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">from</span> kubernetes <span class="keyword">import</span> client, config</span><br><span class="line"></span><br><span class="line">config.load_kube_config()</span><br><span class="line"></span><br><span class="line">v1 = client.CoreV1Api()</span><br><span class="line"></span><br><span class="line">ca = get_ca_from_local_test_file()</span><br><span class="line"><span class="comment">#CA string: &quot;-----BEGIN CERTIFICATE-----\nYOUR_CERTIFICATE_HERE\n-----END CERTIFICATE-----&quot;&quot;</span></span><br><span class="line"></span><br><span class="line">certificate_data = &#123;</span><br><span class="line">    <span class="string">&quot;certificate.crt&quot;</span>: ca</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line">configmap = client.V1ConfigMap(</span><br><span class="line">    data=certificate_data,</span><br><span class="line">    metadata=client.V1ObjectMeta(name=<span class="string">&#x27;my-certificate-configmap&#x27;</span>)</span><br><span class="line">)</span><br><span class="line"></span><br><span class="line"><span class="keyword">try</span>:</span><br><span class="line">    response = v1.create_namespaced_config_map(namespace=<span class="string">&#x27;default&#x27;</span>, body=configmap)</span><br><span class="line">    <span class="built_in">print</span>(<span class="string">&quot;ConfigMap created. Status=&#x27;%s&#x27;&quot;</span> % <span class="built_in">str</span>(response.metadata))</span><br><span class="line"><span class="keyword">except</span> Exception <span class="keyword">as</span> e:</span><br><span class="line">    <span class="built_in">print</span>(<span class="string">&quot;Error creating ConfigMap: %s&quot;</span> % e)</span><br></pre></td></tr></table></figure>
+
+<p>在本地执行类似测试用例时，config map中的ca证书格式完全正常，<code>\n</code>换行符正常。但是通过Jenkins Pipeline的参数将同样的CA字符串传入config map中时，会发现换行符并没有被正常转义，导致该证书失效。</p>
+<h2 id="分析"><a href="#分析" class="headerlink" title="分析"></a>分析</h2><p>通过阅读Jekins Pipeline的调用逻辑，发现在UI界面上传入的参数，最终会通过<code>docker run -e XXXX</code>的形式传入test container中，所以我猜测，有可能时Python在容器内部读取环境变量字符串时，换行符没有被转义成功，简单测试的结果如下：</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line">~  <span class="built_in">export</span> TEST_ENV=<span class="string">&quot;test\ntest\n&quot;</span></span><br><span class="line">~  <span class="built_in">echo</span> <span class="variable">$TEST_ENV</span></span><br><span class="line"><span class="built_in">test</span></span><br><span class="line"><span class="built_in">test</span></span><br></pre></td></tr></table></figure>
+
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line">In [<span class="number">1</span>]: <span class="keyword">import</span> os</span><br><span class="line"></span><br><span class="line">In [<span class="number">2</span>]: v = os.getenv(<span class="string">&quot;TEST_ENV&quot;</span>)</span><br><span class="line"></span><br><span class="line">In [<span class="number">3</span>]: v</span><br><span class="line">Out[<span class="number">3</span>]: <span class="string">&#x27;test\\ntest\\n&#x27;</span></span><br></pre></td></tr></table></figure>
+
+<p>果然，Python在使用<code>os.getenv()</code>函数获取带有类似<code>\n</code>需要转义的字符串时，会强制转化成不转义该字符串。所以解决这个问题的方案也简单，只要将从环境变量中获取的ca证书字符串中的 <code>\\n</code>字符替换成<code>\n</code>即可：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">ca = get_ca_from_local_test_file().replace(<span class="string">&quot;\\n&quot;</span>, <span class="string">&quot;\n&quot;</span>)</span><br><span class="line"><span class="comment">#CA string: &quot;-----BEGIN CERTIFICATE-----\nYOUR_CERTIFICATE_HERE\n-----END CERTIFICATE-----&quot;&quot;</span></span><br></pre></td></tr></table></figure>
+
+<h2 id="每日一图"><a href="#每日一图" class="headerlink" title="每日一图"></a>每日一图</h2><p><img src="/HexoBlog/img/BRZ.jpg" alt="BRZ"></p>
+<center>BRZ</center>
+<center>Shot on iPhone 15 Pro Max</center>
+
+    </div>
+
+    
+    
+    
+
+      <footer class="post-footer">
+          <div class="post-tags">
+              <a href="/HexoBlog/tags/Python/" rel="tag"># Python</a>
+              <a href="/HexoBlog/tags/%E7%8E%AF%E5%A2%83%E5%8F%98%E9%87%8F/" rel="tag"># 环境变量</a>
+              <a href="/HexoBlog/tags/Debug/" rel="tag"># Debug</a>
+          </div>
+
+        
+
+
+        
+    <div class="post-nav">
+      <div class="post-nav-item">
+    <a href="/HexoBlog/StupidSpec01ScreenSize/" rel="prev" title="数码产品的迷惑参数（01）- 显示器尺寸">
+      <i class="fa fa-chevron-left"></i> 数码产品的迷惑参数（01）- 显示器尺寸
+    </a></div>
+      <div class="post-nav-item"></div>
+    </div>
+      </footer>
+    
+  </article>
+  
+  
+  
+
+
+
+          </div>
+          
+    <div class="comments" id="valine-comments"></div>
+
+<script>
+  window.addEventListener('tabs:register', () => {
+    let { activeClass } = CONFIG.comments;
+    if (CONFIG.comments.storage) {
+      activeClass = localStorage.getItem('comments_active') || activeClass;
+    }
+    if (activeClass) {
+      let activeTab = document.querySelector(`a[href="#comment-${activeClass}"]`);
+      if (activeTab) {
+        activeTab.click();
+      }
+    }
+  });
+  if (CONFIG.comments.storage) {
+    window.addEventListener('tabs:click', event => {
+      if (!event.target.matches('.tabs-comment .tab-content .tab-pane')) return;
+      let commentClass = event.target.classList[1];
+      localStorage.setItem('comments_active', commentClass);
+    });
+  }
+</script>
+
+        </div>
+          
+  
+  <div class="toggle sidebar-toggle">
+    <span class="toggle-line toggle-line-first"></span>
+    <span class="toggle-line toggle-line-middle"></span>
+    <span class="toggle-line toggle-line-last"></span>
+  </div>
+
+  <aside class="sidebar">
+    <div class="sidebar-inner">
+
+      <ul class="sidebar-nav motion-element">
+        <li class="sidebar-nav-toc">
+          Table of Contents
+        </li>
+        <li class="sidebar-nav-overview">
+          Overview
+        </li>
+      </ul>
+
+      <!--noindex-->
+      <div class="post-toc-wrap sidebar-panel">
+          <div class="post-toc motion-element"><ol class="nav"><li class="nav-item nav-level-2"><a class="nav-link" href="#%E8%83%8C%E6%99%AF"><span class="nav-number">1.</span> <span class="nav-text">背景</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E9%97%AE%E9%A2%98"><span class="nav-number">2.</span> <span class="nav-text">问题</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E5%88%86%E6%9E%90"><span class="nav-number">3.</span> <span class="nav-text">分析</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E6%AF%8F%E6%97%A5%E4%B8%80%E5%9B%BE"><span class="nav-number">4.</span> <span class="nav-text">每日一图</span></a></li></ol></div>
+      </div>
+      <!--/noindex-->
+
+      <div class="site-overview-wrap sidebar-panel">
+        <div class="site-author motion-element" itemprop="author" itemscope itemtype="http://schema.org/Person">
+    <img class="site-author-image" itemprop="image" alt="Yan Sun"
+      src="http://p1.itc.cn/images01/20200611/b355f238a324427d956161b3a0d02d44.jpeg">
+  <p class="site-author-name" itemprop="name">Yan Sun</p>
+  <div class="site-description" itemprop="description"></div>
+</div>
+<div class="site-state-wrap motion-element">
+  <nav class="site-state">
+      <div class="site-state-item site-state-posts">
+          <a href="/HexoBlog/archives/">
+        
+          <span class="site-state-item-count">3</span>
+          <span class="site-state-item-name">posts</span>
+        </a>
+      </div>
+      <div class="site-state-item site-state-categories">
+            <a href="/HexoBlog/categories/">
+          
+        <span class="site-state-item-count">3</span>
+        <span class="site-state-item-name">categories</span></a>
+      </div>
+      <div class="site-state-item site-state-tags">
+            <a href="/HexoBlog/tags/">
+          
+        <span class="site-state-item-count">7</span>
+        <span class="site-state-item-name">tags</span></a>
+      </div>
+  </nav>
+</div>
+  <div class="links-of-author motion-element">
+      <span class="links-of-author-item">
+        <a href="https://github.com/yankee941203" title="GitHub → https:&#x2F;&#x2F;github.com&#x2F;yankee941203" rel="noopener" target="_blank"><i class="fab fa-github fa-fw"></i>GitHub</a>
+      </span>
+  </div>
+
+
+
+      </div>
+        <div class="back-to-top motion-element">
+          <i class="fa fa-arrow-up"></i>
+          <span>0%</span>
+        </div>
+
+    </div>
+  </aside>
+  <div id="sidebar-dimmer"></div>
+
+
+      </div>
+    </main>
+
+    <footer class="footer">
+      <div class="footer-inner">
+        
+
+        
+
+<div class="copyright">
+  
+  &copy; 
+  <span itemprop="copyrightYear">2024</span>
+  <span class="with-love">
+    <i class="fa fa-heart"></i>
+  </span>
+  <span class="author" itemprop="copyrightHolder">Yan Sun</span>
+</div>
+  <div class="powered-by">Powered by <a href="https://hexo.io/" class="theme-link" rel="noopener" target="_blank">Hexo</a> & <a href="https://pisces.theme-next.org/" class="theme-link" rel="noopener" target="_blank">NexT.Pisces</a>
+  </div>
+
+        
+<div class="busuanzi-count">
+  <script async src="https://busuanzi.ibruce.info/busuanzi/2.3/busuanzi.pure.mini.js"></script>
+    <span class="post-meta-item" id="busuanzi_container_site_uv" style="display: none;">
+      <span class="post-meta-item-icon">
+        <i class="fa fa-user"></i>
+      </span>
+      <span class="site-uv" title="Total Visitors">
+        <span id="busuanzi_value_site_uv"></span>
+      </span>
+    </span>
+    <span class="post-meta-divider">|</span>
+    <span class="post-meta-item" id="busuanzi_container_site_pv" style="display: none;">
+      <span class="post-meta-item-icon">
+        <i class="fa fa-eye"></i>
+      </span>
+      <span class="site-pv" title="Total Views">
+        <span id="busuanzi_value_site_pv"></span>
+      </span>
+    </span>
+</div>
+
+
+
+
+
+
+
+
+      </div>
+    </footer>
+  </div>
+
+  
+  <script src="/HexoBlog/lib/anime.min.js"></script>
+  <script src="/HexoBlog/lib/velocity/velocity.min.js"></script>
+  <script src="/HexoBlog/lib/velocity/velocity.ui.min.js"></script>
+
+<script src="/HexoBlog/js/utils.js"></script>
+
+<script src="/HexoBlog/js/motion.js"></script>
+
+
+<script src="/HexoBlog/js/schemes/pisces.js"></script>
+
+
+<script src="/HexoBlog/js/next-boot.js"></script>
+
+
+
+
+  
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+  
+
+  
+
+
+<script>
+NexT.utils.loadComments(document.querySelector('#valine-comments'), () => {
+  NexT.utils.getScript('//unpkg.com/valine/dist/Valine.min.js', () => {
+    var GUEST = ['nick', 'mail', 'link'];
+    var guest = 'nick,mail';
+    guest = guest.split(',').filter(item => {
+      return GUEST.includes(item);
+    });
+    new Valine({
+      el         : '#valine-comments',
+      verify     : false,
+      notify     : false,
+      appId      : 'Iaik2WDtiZBmqPySdbqyqtYQ-gzGzoHsz',
+      appKey     : 'BKJtuf8vuHrx8roS9FUra7Qi',
+      placeholder: "Write some kind comments to talk with me :-)",
+      avatar     : 'mm',
+      meta       : guest,
+      pageSize   : '10' || 10,
+      visitor    : false,
+      lang       : 'en, zh-cn' || 'zh-cn',
+      path       : location.pathname,
+      recordIP   : false,
+      serverURLs : ''
+    });
+  }, window.Valine);
+});
+</script>
+
+</body>
+</html>
